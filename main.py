@@ -32,6 +32,15 @@ def create_tables():
         cursor.close()
 
 
+@app.route('/profit_history')
+async def profit_history():
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM profit")
+    result = cursor.fetchall()
+    cursor.close()
+    return quart.jsonify(result)
+
+
 @app.route('/check_password/<code>/<password>')
 async def check_password(code: int, password):
     random.seed(code)
@@ -223,7 +232,7 @@ async def exptolvl(num):
 async def index():
     return quart.redirect("https://github.com/Tems-py/funky")
 
-create_tables()
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=config.port)
+    create_tables()

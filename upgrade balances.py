@@ -1,28 +1,3 @@
-import datetime
-import random
-import datetime
+import requests
 
-from conf import config
-import mysql.connector
-
-db = mysql.connector.connect(
-    host=config.database_login['host'],
-    user=config.database_login['user'],
-    password=config.database_login['password'],
-    database=config.database_login['database']
-)
-
-
-amount = random.randrange(0, 50)
-amount += 90
-amount /= 100
-
-cursor = db.cursor()
-cursor.execute(f"UPDATE balance SET `virtual` = `virtual` * {amount}")
-cursor.close()
-
-timestamp = datetime.datetime.utcnow()
-
-cursor = db.cursor()
-cursor.execute("INSERT INTO profit (amount, date) VALUES (%s, %s)", (amount, timestamp))
-db.commit()
+x = requests.get("https://tems.bieda.it/upgrade", data={"token": "2eEYAYsW3M4zfR$dDn%FR3F5#NApP3jPhhmSkB@kzdBE3FoNUGo$kQ3&PaUfkykSuAX6RJvSQgt9mJaJvApJ9W9omZbg8n!XdMX%Jf@hrZ"})

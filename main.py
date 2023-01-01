@@ -1,4 +1,7 @@
+import datetime
+
 import quart
+from quart_cors import cors
 from quart import request
 import random
 import hashlib
@@ -17,12 +20,34 @@ AUTH_TOKEN = config.AUTH_TOKEN
 
 # Create the app
 app = quart.Quart(__name__)
+app = cors(app, allow_origin="*")
 
 salt = config.salt
 cursor_update = db.cursor()
 
 
-# create tables in database from sql file
+async def token_required(func):
+    async def wrapper():
+        token = (await request.form)['token']
+        if token != AUTH_TOKEN:
+            return quart.jsonify({'error': 'Invalid token'})
+        func()
+
+    return wrapper
+
+
+async def params_required(func):
+    async def wrapper(params):
+        for param in params:
+            if param not in (await request.form):
+                return quart.jsonify({'error': 'Missing parameter: ' + param})
+            if (await request.form)[param] == '':
+                return quart.jsonify({'error': 'Missing parameter: ' + param})
+        func()
+
+    return wrapper
+
+
 def create_tables():
     with open('create_tables.sql', 'r') as f:
         sql = f.read()
@@ -47,14 +72,33 @@ async def check_password(code: int, password):
     return code + ' ' + password + ' ' + random.random() % 100
 
 
+@params_required(['token'])
+@token_required
+@app.route("/upgrade")
+async def upgrade():
+    amount = random.randrange(0, 50)
+    amount += 90
+    amount /= 100
+
+    cursor = db.cursor()
+    cursor.execute(f"UPDATE balance SET `virtual` = `virtual` * {amount}")
+    cursor.close()
+    db.commit()
+
+    timestamp = datetime.datetime.utcnow()
+
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO profit (amount, date) VALUES (%s, %s)", (amount, timestamp))
+    db.commit()
+    return quart.jsonify({'success': 'true'})
+
+
+@params_required(['id', 'status', 'token'])
+@token_required
 @app.route('/change_payment_status', methods=['POST'])
 async def change_payment_status():
-    payment_id = (await request.form)['id']
     status = (await request.form)['status']
-    token = (await request.form)['token']
-    if token != AUTH_TOKEN:
-        return quart.jsonify({'error': 'Invalid token'})
-
+    payment_id = (await request.form)['id']
     cursor = db.cursor()
     cursor.execute("UPDATE payments SET status = %s WHERE id = %s", (status, payment_id))
     db.commit()
@@ -70,17 +114,12 @@ async def payments_requests():
     return quart.jsonify(payments)
 
 
+@token_required
+@params_required(['balance', 'username'])
 @app.route("/virtual_update", methods=['POST'])
 async def virtual_update():
     balance = (await request.form)['balance']
     username = (await request.form)['username']
-    token = (await request.form)['token']
-    if token != AUTH_TOKEN:
-        return quart.jsonify({'error': 'Invalid token'})
-    if balance == '':
-        return quart.jsonify({'error': 'Empty balance'})
-    if username == '':
-        return quart.jsonify({'error': 'Empty username'})
     cursor = db.cursor()
     # check if user exists
     cursor.execute("SELECT * FROM balance WHERE username = %s", (username,))
@@ -93,17 +132,12 @@ async def virtual_update():
     return quart.jsonify({'status': 'ok'})
 
 
+@token_required
+@params_required(['balance', 'username'])
 @app.route("/balance_update", methods=['POST'])
 async def balance_update():
     balance = (await request.form)['balance']
     username = (await request.form)['username']
-    token = (await request.form)['token']
-    if token != AUTH_TOKEN:
-        return quart.jsonify({'error': 'Invalid token'})
-    if balance == '':
-        return quart.jsonify({'error': 'Empty balance'})
-    if username == '':
-        return quart.jsonify({'error': 'Empty username'})
     # check if user exists
     cursor_update.execute("SELECT * FROM balance WHERE username = %s", (username,))
     if cursor_update.fetchone() is None:
@@ -138,6 +172,7 @@ async def game_balance(username):
     return quart.jsonify(balance)
 
 
+@params_required(['token', 'amount'])
 @app.route('/create_payment', methods=['POST'])
 async def payment():
     token = (await request.form)['token']
@@ -168,6 +203,7 @@ async def payment():
     return quart.jsonify({'success': 'Payment created'})
 
 
+@params_required(['username', 'password'])
 @app.route("/register", methods=["POST"])
 async def register():
     username = (await request.form)['username']
@@ -197,6 +233,7 @@ async def register():
     return quart.jsonify({'username': username})
 
 
+@params_required(['username', 'password'])
 @app.route('/login/', methods=['POST'])
 async def login():
     username = (await request.form)['username']
